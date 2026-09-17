@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Selector - 本地音乐试听选歌</title>
+<style>
+/* ═══════════ Reset & Variables ═══════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0f18;
+  --surface:#141926;
+  --surface2:#1c2236;
+  --surface3:#242c44;
+  --border:#2a3250;
+  --text:#e4e8f2;
+  --text2:#8890a6;
+  --text3:#555e76;
+  --accent:#e8a028;
+  --accent-hover:#f0b848;
+  --accent-bg:#e8a02818;
+  --danger:#e04848;
+  --success:#38b860;
+  --playing:#4080e0;
+  --playing-bg:#4080e012;
+  --font-ui:-apple-system,'PingFang SC','Microsoft YaHei',Segoe UI,Roboto,sans-serif;
+  --font-mono:Consolas,'JetBrains Mono',Menlo,monospace;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-ui);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+button{font-family:inherit;cursor:pointer}
+input[type="text"],input[type="range"]{font-family:inherit}
+::selection{background:var(--accent);color:var(--bg)}
+
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* ═══════════ Layout ═══════════ */
+#app{display:flex;flex-direction:column;height:100vh}
+
+header{
+  display:flex;align-items:center;gap:16px;
+  padding:10px 20px;background:var(--surface);
+  border-bottom:1px solid var(--border);flex-shrink:0;z-index:10;
+}
+.header-brand{display:flex;align-items:baseline;gap:10px;flex-shrink:0}
+.header-brand h1{
+  font-size:17px;font-weight:700;
+  background:linear-gradient(135deg,var(--accent),var(--accent-hover));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;letter-spacing:-.3px;
+}
+.header-brand .count{font-size:12px;color:var(--text3);font-family:var(--font-mono)}
+.header-search{flex:1;max-width:360px;position:relative}
+.header-search input{
+  width:100%;padding:7px 12px 7px 32px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:13px;
+  outline:none;transition:border-color .2s;
+}
+.header-search input:focus{border-color:var(--accent)}
+.header-search::before{
+  content:'\2315';position:absolute;left:10px;top:50%;transform:translateY(-50%);
+  color:var(--text3);font-size:15px;pointer-events:none;
+}
+.filter-tabs{display:flex;gap:3px;flex-shrink:0}
+.filter-tabs button{
+  background:transparent;border:1px solid var(--border);
+  border-radius:5px;padding:5px 13px;color:var(--text2);
+  font-size:12px;font-weight:500;transition:all .15s;
+}
+.filter-tabs button:hover{background:var(--surface2);color:var(--text)}
+.filter-tabs button.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
+.btn-export{
+  margin-left:auto;flex-shrink:0;background:var(--surface2);
+  border:1px solid var(--accent-dim,#9a6e1e);border-radius:5px;
+  padding:6px 16px;color:var(--accent);font-size:12px;font-weight:600;transition:all .2s;
+}
+.btn-export:hover{background:var(--accent);color:var(--bg)}
+
+main{display:grid;grid-template-columns:1fr 300px 1fr;flex:1;overflow:hidden}
+
+/* ═══════════ Song List (Left) ═══════════ */
+.panel-songs{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.song-list{flex:1;overflow-y:auto;padding:2px 0}
+.song-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 14px 8px 10px;border-left:3px solid transparent;
+  cursor:pointer;transition:background .12s;
+  content-visibility:auto;contain-intrinsic-size:0 46px;
+}
+.song-item:hover{background:var(--surface2)}
+.song-item.playing{background:var(--playing-bg);border-left-color:var(--playing)}
+.song-idx{font-size:11px;color:var(--text3);font-family:var(--font-mono);width:32px;text-align:right;flex-shrink:0}
+.song-star{width:16px;text-align:center;flex-shrink:0;font-size:12px;color:var(--accent)}
+.song-info{flex:1;min-width:0}
+.song-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-item.playing .song-title{color:var(--playing);font-weight:600}
+.song-meta{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-dur{font-size:11px;color:var(--text3);font-family:var(--font-mono);flex-shrink:0}
+.empty-msg{padding:60px 20px;text-align:center;color:var(--text3);font-size:14px}
+
+/* ═══════════ Player (Center) ═══════════ */
+.panel-player{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px 20px;gap:18px;background:var(--surface);overflow-y:auto;
+}
+.player-inner{width:100%;max-width:260px;display:flex;flex-direction:column;align-items:center;gap:16px}
+.now-art{
+  width:120px;height:120px;border-radius:12px;
+  background:linear-gradient(135deg,var(--surface2),var(--surface3));
+  display:flex;align-items:center;justify-content:center;
+  font-size:40px;color:var(--text3);
+  box-shadow:0 8px 30px rgba(0,0,0,.3);position:relative;overflow:hidden;
+}
+.now-art.playing-art{animation:art-pulse 2s ease-in-out infinite}
+@keyframes art-pulse{
+  0%,100%{box-shadow:0 8px 30px rgba(0,0,0,.3)}
+  50%{box-shadow:0 8px 40px rgba(64,128,224,.2)}
+}
+.now-title{font-size:16px;font-weight:700;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.now-artist{font-size:12px;color:var(--text2);text-align:center}
+.now-album{font-size:11px;color:var(--text3);text-align:center}
+
+.progress-row{display:flex;align-items:center;gap:8px;width:100%}
+.time-label{font-size:11px;color:var(--text3);font-family:var(--font-mono);min-width:36px;text-align:center}
+.progress-bar{flex:1;height:5px;background:var(--surface3);border-radius:3px;cursor:pointer;position:relative}
+.progress-bar:hover{height:7px}
+.progress-fill{height:100%;background:var(--accent);border-radius:3px;width:0;transition:width .15s linear;pointer-events:none}
+
+.controls{display:flex;align-items:center;gap:14px}
+.ctrl-btn{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:50%;color:var(--text);display:flex;align-items:center;justify-content:center;
+  transition:all .15s;font-size:16px;width:40px;height:40px;
+}
+.ctrl-btn:hover{background:var(--surface3);border-color:var(--accent-dim,#9a6e1e)}
+.ctrl-btn.play-btn{width:52px;height:52px;font-size:20px;border-width:2px}
+.ctrl-btn.play-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.actions{display:flex;gap:8px;width:100%}
+.act-btn{
+  flex:1;padding:8px 0;background:var(--surface2);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:12px;font-weight:500;
+  transition:all .15s;text-align:center;
+}
+.act-btn:hover{background:var(--surface3)}
+.act-btn.add-btn:hover{border-color:var(--success);color:var(--success)}
+.act-btn.remove-btn:hover{border-color:var(--danger);color:var(--danger)}
+.act-btn.is-selected{border-color:var(--success);color:var(--success);background:var(--accent-bg)}
+
+.audition-box{width:100%;background:var(--surface2);border-radius:8px;padding:10px 14px}
+.audition-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.audition-row label{display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0}
+.audition-row input[type="checkbox"]{accent-color:var(--accent)}
+.audition-countdown{font-family:var(--font-mono);font-size:11px;color:var(--accent);margin-left:auto}
+.audition-dur{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text2)}
+.audition-dur input[type="range"]{flex:1;accent-color:var(--accent);height:3px}
+.audition-dur .dur-val{font-family:var(--font-mono);min-width:24px;color:var(--text)}
+
+.volume-row{display:flex;align-items:center;gap:6px;width:100%}
+.volume-row span{font-size:14px;flex-shrink:0}
+.volume-row input[type="range"]{flex:1;accent-color:var(--accent);height:3px}
+
+.shortcuts{font-size:10px;color:var(--text3);text-align:center;line-height:1.8;padding-top:4px;border-top:1px solid var(--border);width:100%}
+.shortcuts kbd{background:var(--surface3);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:var(--font-mono);font-size:10px}
+
+/* ═══════════ Selected List (Right) ═══════════ */
+.panel-selected{display:flex;flex-direction:column;overflow:hidden}
+.panel-sel-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.panel-sel-header h3{font-size:13px;font-weight:600;color:var(--text2)}
+.panel-sel-header .sel-count{font-family:var(--font-mono);font-size:12px;background:var(--accent-bg);color:var(--accent);padding:1px 8px;border-radius:10px}
+.sel-list{flex:1;overflow-y:auto;padding:2px 0}
+.sel-item{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;transition:background .12s}
+.sel-item:hover{background:var(--surface2)}
+.sel-info{flex:1;min-width:0}
+.sel-title{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-artist{font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-remove{background:transparent;border:none;color:var(--text3);font-size:16px;padding:2px 4px;transition:color .15s;flex-shrink:0;line-height:1}
+.sel-remove:hover{color:var(--danger)}
+
+/* ═══════════ Toast ═══════════ */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--surface3);color:var(--text);padding:8px 20px;border-radius:8px;
+  font-size:13px;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.4);
+  z-index:9999;pointer-events:none;
+  animation:toast-in .25s ease,toast-out .25s ease 1.6s forwards;
+}
+@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes toast-out{from{opacity:1}to{opacity:0}}
+
+.playing-bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px;margin-right:2px;flex-shrink:0}
+.playing-bars span{display:block;width:2.5px;border-radius:1px;background:var(--playing);animation:bar-dance .5s ease-in-out infinite alternate}
+.playing-bars span:nth-child(1){height:40%;animation-delay:0s}
+.playing-bars span:nth-child(2){height:80%;animation-delay:.12s}
+.playing-bars span:nth-child(3){height:55%;animation-delay:.24s}
+@keyframes bar-dance{from{height:15%}to{height:100%}}
+
+/* ═══════════ Directory Modal ═══════════ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal-overlay.show{display:flex}
+.modal{width:520px;max-width:90vw;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:12px}
+.modal .cur-dir{font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:6px 10px;margin-bottom:10px;word-break:break-all}
+.modal label{display:block;font-size:11px;color:var(--text3);margin-bottom:4px}
+.modal input[type="text"]{width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none;font-family:var(--font-mono)}
+.modal input[type="text"]:focus{border-color:var(--accent)}
+.modal-hint{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6}
+.modal-progress{display:none;margin-top:14px}
+.modal-progress.show{display:block}
+.modal-progress .bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.modal-progress .fill{height:100%;width:0;background:var(--accent);transition:width .3s}
+.modal-progress .info{margin-top:6px;font-size:11px;color:var(--text2);font-family:var(--font-mono)}
+.modal-error{display:none;margin-top:10px;font-size:12px;color:var(--danger)}
+.modal-error.show{display:block}
+.modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.modal-btns button{padding:6px 16px;border-radius:6px;font-size:12px;font-weight:500;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:all .15s}
+.modal-btns button:hover{background:var(--surface3)}
+.modal-btns button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+.modal-btns button.primary:hover{background:var(--accent-hover)}
+.modal-btns button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="header-brand">
+      <h1>Music Selector</h1>
+      <span class="count" id="song-count">--</span>
+    </div>
+    <div class="header-search">
+      <input type="text" id="search-input" placeholder="搜索歌名、歌手、专辑、文件名… (F)" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="filter-tabs">
+      <button class="active" data-filter="all">全部</button>
+      <button data-filter="unselected">未选</button>
+      <button data-filter="selected">已选</button>
+    </div>
+    <button class="btn-export" id="btn-dir">换目录</button>
+    <button class="btn-export" id="btn-export">导出 M3U</button>
+  </header>
+
+  <main>
+    <section class="panel-songs">
+      <div class="song-list" id="song-list">
+        <div class="empty-msg">加载中…</div>
+      </div>
+    </section>
+
+    <section class="panel-player">
+      <div class="player-inner">
+        <div class="now-art" id="now-art">&#9835;</div>
+        <div class="now-title" id="now-title">点击左侧歌曲开始试听</div>
+        <div class="now-artist" id="now-artist"></div>
+        <div class="now-album" id="now-album"></div>
+
+        <div class="progress-row">
+          <span class="time-label" id="time-cur">0:00</span>
+          <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+          <span class="time-label" id="time-total">0:00</span>
+        </div>
+
+        <div class="controls">
+          <button class="ctrl-btn" id="btn-prev" title="上一首 (&#8593;)">&#9198;</button>
+          <button class="ctrl-btn play-btn" id="btn-play" title="播放/暂停 (Space)">&#9654;</button>
+          <button class="ctrl-btn" id="btn-next" title="下一首 (&#8595;)">&#9197;</button>
+        </div>
+
+        <div class="actions">
+          <button class="act-btn add-btn" id="btn-add" title="加入已选 (A)">+ 加入已选</button>
+          <button class="act-btn remove-btn" id="btn-remove" title="移除 (D)">- 移除</button>
+        </div>
+
+        <div class="volume-row">
+          <span>&#128266;</span>
+          <input type="range" id="volume-slider" min="0" max="100" value="100">
+        </div>
+
+        <div class="audition-box">
+          <div class="audition-row">
+            <label><input type="checkbox" id="audition-toggle">试听模式</label>
+            <span class="audition-countdown" id="audition-countdown"></span>
+          </div>
+          <div class="audition-dur">
+            <span>每首</span>
+            <input type="range" id="audition-dur" min="5" max="60" value="20">
+            <span class="dur-val" id="dur-val">20s</span>
+          </div>
+        </div>
+
+        <div class="shortcuts">
+          <kbd>Space</kbd> 播放/暂停 &nbsp;
+          <kbd>&#8593;</kbd><kbd>&#8595;</kbd> 切歌 &nbsp;
+          <kbd>A</kbd> 加入 &nbsp;
+          <kbd>D</kbd> 移除 &nbsp;
+          <kbd>F</kbd> 搜索
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-selected">
+      <div class="panel-sel-header">
+        <h3>已选歌曲</h3>
+        <span class="sel-count" id="sel-count">0</span>
+      </div>
+      <div class="sel-list" id="sel-list">
+        <div class="empty-msg">还没有选择歌曲</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-overlay" id="dir-modal">
+  <div class="modal">
+    <h2>更换音乐目录</h2>
+    <div class="cur-dir" id="dir-current"></div>
+    <label for="dir-input">新的音乐目录路径</label>
+    <input type="text" id="dir-input" placeholder="例如 D:\Music" autocomplete="off" spellcheck="false">
+    <div class="modal-hint">填入后点击「开始扫描」，将重新生成音乐库索引。首次扫描几千首歌约需 1~2 分钟，之后增量更新很快。已选列表基于相对路径，不受目录切换影响。</div>
+    <div class="modal-progress" id="dir-progress">
+      <div class="bar"><div class="fill" id="dir-progress-fill"></div></div>
+      <div class="info" id="dir-progress-info"></div>
+    </div>
+    <div class="modal-error" id="dir-error"></div>
+    <div class="modal-btns">
+      <button id="dir-cancel">取消</button>
+      <button class="primary" id="dir-confirm">开始扫描</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════ State ═══════════════════════ */
+let library      = [];
+let filteredSongs = [];
+let selectedPaths = new Set();
+let curIdx        = -1;
+let filterMode    = 'all';
+let searchQuery   = '';
+let auditionMode  = false;
+let auditionDur   = 20;
+let auditionTimer = null;
+let auditionEnd   = null;
+
+const audio = new Audio();
+audio.volume = 1;
+
+/* ═══════════════════════ DOM ═══════════════════════ */
+const $ = id => document.getElementById(id);
+const elSongList    = $('song-list');
+const elSelList     = $('sel-list');
+const elSongCount   = $('song-count');
+const elSelCount    = $('sel-count');
+const elNowTitle    = $('now-title');
+const elNowArtist   = $('now-artist');
+const elNowAlbum    = $('now-album');
+const elNowArt      = $('now-art');
+const elProgressFill= $('progress-fill');
+const elProgressBar = $('progress-bar');
+const elTimeCur     = $('time-cur');
+const elTimeTotal   = $('time-total');
+const elBtnPlay     = $('btn-play');
+const elSearch      = $('search-input');
+const elAudToggle   = $('audition-toggle');
+const elAudDur      = $('audition-dur');
+const elDurVal      = $('dur-val');
+const elAudCountdown= $('audition-countdown');
+const elVolume      = $('volume-slider');
+const elDirModal    = $('dir-modal');
+const elDirCurrent  = $('dir-current');
+const elDirInput    = $('dir-input');
+const elDirProgress = $('dir-progress');
+const elDirFill     = $('dir-progress-fill');
+const elDirInfo     = $('dir-progress-info');
+const elDirError    = $('dir-error');
+const elDirConfirm  = $('dir-confirm');
+const elDirCancel   = $('dir-cancel');
+
+/* ═══════════════════════ Init ═══════════════════════ */
+async function init(){
+  try{
+    const resp = await fetch('/api/library');
+    if(!resp.ok) throw new Error(resp.status);
+    library = await resp.json();
+    selectedPaths = new Set();
+    library.forEach(s => { if(s.selected) selectedPaths.add(s.relative_path); });
+    elSongCount.textContent = library.length + ' 首';
+    filterAndRender();
+    renderSelected();
+  }catch(e){
+    elSongList.innerHTML = '<div class="empty-msg">加载失败，请确认已运行 analyze_music.py 且服务已启动。</div>';
+  }
+  setupEvents();
+  requestAnimationFrame(tick);
+}
+
+/* ═══════════════════════ Filter & Render ═══════════════════════ */
+function filterAndRender(){
+  const playingId = curIdx >= 0 && curIdx < filteredSongs.length ? filteredSongs[curIdx].id : null;
+  let songs = library.slice();
+
+  if(filterMode === 'selected'){ songs = songs.filter(s => selectedPaths.has(s.relative_path)); }
+  else if(filterMode === 'unselected'){ songs = songs.filter(s => !selectedPaths.has(s.relative_path)); }
+
+  if(searchQuery){
+    const q = searchQuery.toLowerCase();
+    songs = songs.filter(s =>
+      (s.title         && s.title.toLowerCase().includes(q))  ||
+      (s.artist        && s.artist.toLowerCase().includes(q)) ||
+      (s.album         && s.album.toLowerCase().includes(q))  ||
+      (s.filename      && s.filename.toLowerCase().includes(q)) ||
+      (s.relative_path && s.relative_path.toLowerCase().includes(q))
+    );
+  }
+
+  filteredSongs = songs;
+  if(playingId !== null){ curIdx = filteredSongs.findIndex(s => s.id === playingId); }
+  renderSongList();
+}
+
+function renderSongList(){
+  if(!filteredSongs.length){ elSongList.innerHTML = '<div class="empty-msg">没有匹配的歌曲</div>'; return; }
+  const playingId = curIdx >= 0 && curIdx < filteredSongs.length ? filteredSongs[curIdx].id : null;
+  const h = [];
+  for(let i = 0; i < filteredSongs.length; i++){
+    const s = filteredSongs[i];
+    const isP = s.id === playingId;
+    const isS = selectedPaths.has(s.relative_path);
+    h.push(
+      '<div class="song-item'+(isP?' playing':'')+'" data-idx="'+i+'">',
+      isP ? '<span class="playing-bars"><span></span><span></span><span></span></span>' : '',
+      '<span class="song-idx">'+(s.id+1)+'</span>',
+      '<span class="song-star">'+(isS?'\u2605':'')+'</span>',
+      '<div class="song-info"><div class="song-title">'+esc(s.title)+'</div>',
+      '<div class="song-meta">'+esc(s.artist)+' \u2014 '+esc(s.album)+'</div></div>',
+      '<span class="song-dur">'+fmtTime(s.duration)+'</span></div>'
+    );
+  }
+  elSongList.innerHTML = h.join('');
+}
+
+function renderSelected(){
+  const songs = library.filter(s => selectedPaths.has(s.relative_path));
+  elSelCount.textContent = songs.length;
+  if(!songs.length){ elSelList.innerHTML = '<div class="empty-msg">还没有选择歌曲</div>'; return; }
+  const h = [];
+  for(const s of songs){
+    h.push(
+      '<div class="sel-item" data-sid="'+s.id+'">',
+      '<div class="sel-info"><div class="sel-title">'+esc(s.title)+'</div>',
+      '<div class="sel-artist">'+esc(s.artist)+'</div></div>',
+      '<button class="sel-remove" data-rid="'+s.id+'" title="移除">\u00d7</button></div>'
+    );
+  }
+  elSelList.innerHTML = h.join('');
+}
+
+/* ═══════════════════════ Playback ═══════════════════════ */
+function playAt(idx){
+  if(idx < 0 || idx >= filteredSongs.length) return;
+  curIdx = idx;
+  const s = filteredSongs[idx];
+
+  elNowTitle.textContent  = s.title;
+  elNowArtist.textContent = s.artist;
+  elNowAlbum.textContent  = s.album;
+  elBtnPlay.textContent   = '\u23f8';
+  elNowArt.classList.add('playing-art');
+
+  audio.src = '/api/stream/' + s.id;
+  audio.load();
+
+  const onReady = () => {
+    audio.removeEventListener('loadedmetadata', onReady);
+    if(curIdx < 0 || curIdx >= filteredSongs.length) return;
+    const cur = filteredSongs[curIdx];
+    if(!cur || cur.id !== s.id) return;
+
+    let seek = s.chorus_start || 0;
+    if(!isNaN(audio.duration) && audio.duration && seek > audio.duration - 1) seek = 0;
+    if(seek < 0) seek = 0;
+    if(seek > 0) audio.currentTime = seek;
+
+    audio.play().catch(()=>{});
+  };
+  audio.addEventListener('loadedmetadata', onReady);
+
+  renderSongList();
+  scrollToPlaying();
+  updateAddBtn();
+}
+
+function playNext(){
+  clearAudition();
+  if(!filteredSongs.length) return;
+  const next = curIdx + 1;
+  playAt(next >= filteredSongs.length ? 0 : next);
+}
+
+function playPrev(){
+  clearAudition();
+  if(!filteredSongs.length) return;
+  const prev = curIdx - 1;
+  playAt(prev < 0 ? filteredSongs.length - 1 : prev);
+}
+
+function togglePlay(){
+  if(!audio.src || curIdx < 0){ if(filteredSongs.length) playAt(0); return; }
+  if(audio.paused){
+    audio.play().catch(()=>{});
+    elBtnPlay.textContent = '\u23f8';
+    elNowArt.classList.add('playing-art');
+    startAudition();
+  }else{
+    audio.pause();
+  }
+}
+
+function scrollToPlaying(){
+  const el = elSongList.querySelector('.song-item.playing');
+  if(el) el.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+/* ═══════════════════════ Audition ═══════════════════════ */
+function startAudition(){
+  clearAudition();
+  if(auditionMode && !audio.paused){
+    auditionEnd = Date.now() + auditionDur * 1000;
+    auditionTimer = setTimeout(()=> playNext(), auditionDur * 1000);
+  }
+}
+function clearAudition(){
+  if(auditionTimer){ clearTimeout(auditionTimer); auditionTimer = null; }
+  auditionEnd = null;
+  elAudCountdown.textContent = '';
+}
+
+/* ═══════════════════════ Selection ═══════════════════════ */
+function getCurSong(){
+  return curIdx >= 0 && curIdx < filteredSongs.length ? filteredSongs[curIdx] : null;
+}
+
+async function addToSelected(){
+  const s = getCurSong();
+  if(!s) return;
+  if(selectedPaths.has(s.relative_path)){ toast('已在已选列表中'); return; }
+  await fetch('/api/select/'+s.id, {method:'POST'});
+  selectedPaths.add(s.relative_path);
+  filterAndRender();
+  renderSelected();
+  updateAddBtn();
+  toast('\u2713 ' + s.title);
+}
+
+async function removeFromSelected(){
+  const s = getCurSong();
+  if(!s) return;
+  if(!selectedPaths.has(s.relative_path)){ toast('不在已选列表中'); return; }
+  await fetch('/api/deselect/'+s.id, {method:'POST'});
+  selectedPaths.delete(s.relative_path);
+  filterAndRender();
+  renderSelected();
+  updateAddBtn();
+  toast('已移除 ' + s.title);
+}
+
+async function removeById(id){
+  const s = library.find(x => x.id === id);
+  if(!s) return;
+  await fetch('/api/deselect/'+id, {method:'POST'});
+  selectedPaths.delete(s.relative_path);
+  filterAndRender();
+  renderSelected();
+  updateAddBtn();
+}
+
+function updateAddBtn(){
+  const s = getCurSong();
+  const addBtn = $('btn-add');
+  if(s && selectedPaths.has(s.relative_path)){
+    addBtn.classList.add('is-selected');
+    addBtn.textContent = '\u2713 已选择';
+  }else{
+    addBtn.classList.remove('is-selected');
+    addBtn.textContent = '+ 加入已选';
+  }
+}
+
+/* ═══════════════════════ Tick ═══════════════════════ */
+function tick(){
+  if(audio.duration && !isNaN(audio.duration)){
+    const pct = (audio.currentTime / audio.duration) * 100;
+    elProgressFill.style.width = pct + '%';
+    elTimeCur.textContent   = fmtTime(audio.currentTime);
+    elTimeTotal.textContent = fmtTime(audio.duration);
+  }
+  if(auditionMode && auditionEnd && !audio.paused){
+    const rem = Math.max(0, Math.ceil((auditionEnd - Date.now()) / 1000));
+    elAudCountdown.textContent = rem + 's';
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ═══════════════════════ Events ═══════════════════════ */
+function setupEvents(){
+  elSongList.addEventListener('click', e => {
+    const item = e.target.closest('.song-item');
+    if(item) playAt(parseInt(item.dataset.idx,10));
+  });
+
+  elSelList.addEventListener('click', e => {
+    const rm = e.target.closest('.sel-remove');
+    if(rm){ removeById(parseInt(rm.dataset.rid,10)); return; }
+    const item = e.target.closest('.sel-item');
+    if(item){
+      const id = parseInt(item.dataset.sid,10);
+      let idx = filteredSongs.findIndex(s => s.id === id);
+      if(idx < 0){
+        filterMode = 'all'; searchQuery = ''; elSearch.value = '';
+        document.querySelectorAll('.filter-tabs button').forEach(b=>b.classList.remove('active'));
+        document.querySelector('.filter-tabs button[data-filter="all"]').classList.add('active');
+        filterAndRender();
+        idx = filteredSongs.findIndex(s => s.id === id);
+      }
+      if(idx >= 0) playAt(idx);
+    }
+  });
+
+  $('btn-play').addEventListener('click', togglePlay);
+  $('btn-prev').addEventListener('click', playPrev);
+  $('btn-next').addEventListener('click', playNext);
+  $('btn-add').addEventListener('click', addToSelected);
+  $('btn-remove').addEventListener('click', removeFromSelected);
+  $('btn-export').addEventListener('click', ()=> window.location.href = '/api/export');
+  $('btn-dir').addEventListener('click', openDirModal);
+  elDirCancel.addEventListener('click', closeDirModal);
+  elDirConfirm.addEventListener('click', startRescan);
+  elDirModal.addEventListener('click', e => { if(e.target === elDirModal) closeDirModal(); });
+  elDirInput.addEventListener('keydown', e => { if(e.key === 'Enter') startRescan(); });
+
+  let dragging = false;
+  const seekFromMouse = e => {
+    const r = elProgressBar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    if(audio.duration) audio.currentTime = ratio * audio.duration;
+    elProgressFill.style.width = (ratio*100)+'%';
+  };
+  elProgressBar.addEventListener('mousedown', e => { dragging = true; seekFromMouse(e); });
+  document.addEventListener('mousemove', e => { if(dragging) seekFromMouse(e); });
+  document.addEventListener('mouseup', ()=> { dragging = false; });
+
+  elVolume.addEventListener('input', e => { audio.volume = parseInt(e.target.value,10) / 100; });
+
+  let searchTimeout;
+  elSearch.addEventListener('input', e => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(()=>{
+      searchQuery = e.target.value.trim();
+      filterAndRender();
+    }, 120);
+  });
+
+  document.querySelectorAll('.filter-tabs button').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.filter-tabs button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      filterMode = btn.dataset.filter;
+      filterAndRender();
+    });
+  });
+
+  elAudToggle.addEventListener('change', e => {
+    auditionMode = e.target.checked;
+    if(auditionMode && !audio.paused) startAudition();
+    else clearAudition();
+  });
+  elAudDur.addEventListener('input', e => {
+    auditionDur = parseInt(e.target.value,10);
+    elDurVal.textContent = auditionDur + 's';
+    if(auditionMode && !audio.paused) startAudition();
+  });
+
+  audio.addEventListener('ended', ()=> playNext());
+  audio.addEventListener('pause', ()=>{
+    elBtnPlay.textContent = '\u25b6';
+    elNowArt.classList.remove('playing-art');
+    clearAudition();
+  });
+  audio.addEventListener('play', ()=>{
+    elBtnPlay.textContent = '\u23f8';
+    elNowArt.classList.add('playing-art');
+    startAudition();
+  });
+  audio.addEventListener('error', ()=>{
+    const s = getCurSong();
+    if(s) toast('播放失败: ' + s.filename);
+    setTimeout(playNext, 800);
+  });
+
+  document.addEventListener('keydown', e => {
+    const tag = e.target.tagName;
+    if(tag === 'INPUT' || tag === 'TEXTAREA'){
+      if(e.key === 'Escape') e.target.blur();
+      return;
+    }
+    switch(e.key){
+      case ' ':         e.preventDefault(); togglePlay(); break;
+      case 'ArrowUp':   e.preventDefault(); playPrev();   break;
+      case 'ArrowDown': e.preventDefault(); playNext();   break;
+      case 'a': case 'A': e.preventDefault(); addToSelected(); break;
+      case 'd': case 'D': e.preventDefault(); removeFromSelected(); break;
+      case 'f': case 'F': e.preventDefault(); elSearch.focus(); break;
+    }
+  });
+}
+
+/* ═══════════════════════ Directory Modal ═══════════════════════ */
+async function openDirModal(){
+  try{
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    elDirCurrent.textContent = cfg.dir && cfg.dir !== '未知（由命令行生成）' ? ('当前目录: ' + cfg.dir) : '当前目录: 未设置';
+    elDirInput.value = cfg.dir && cfg.dir !== '未知（由命令行生成）' ? cfg.dir : '';
+  }catch(e){
+    elDirCurrent.textContent = '当前目录: 未设置';
+    elDirInput.value = '';
+  }
+  elDirError.classList.remove('show');
+  elDirProgress.classList.remove('show');
+  elDirFill.style.width = '0%';
+  elDirConfirm.disabled = false;
+  elDirConfirm.textContent = '开始扫描';
+  elDirModal.classList.add('show');
+  setTimeout(()=> elDirInput.focus(), 50);
+}
+
+function closeDirModal(){ elDirModal.classList.remove('show'); }
+
+async function startRescan(){
+  const dir = elDirInput.value.trim().replace(/^"|"$/g, '');
+  if(!dir){ elDirError.textContent = '请先填写音乐目录路径'; elDirError.classList.add('show'); return; }
+
+  elDirError.classList.remove('show');
+  elDirConfirm.disabled = true;
+  elDirConfirm.textContent = '扫描中…';
+  elDirProgress.classList.add('show');
+  elDirInfo.textContent = '正在检查目录…';
+
+  let resp;
+  try{
+    resp = await fetch('/api/rescan', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({dir: dir})
+    });
+  }catch(e){
+    elDirError.textContent = '网络错误，请确认服务正在运行'; elDirError.classList.add('show');
+    elDirConfirm.disabled = false; elDirConfirm.textContent = '重试';
+    return;
+  }
+
+  const data = await resp.json();
+  if(!resp.ok){
+    elDirError.textContent = data.error || '扫描启动失败'; elDirError.classList.add('show');
+    elDirConfirm.disabled = false; elDirConfirm.textContent = '重试';
+    return;
+  }
+
+  pollScanStatus();
+}
+
+async function pollScanStatus(){
+  try{
+    const r = await fetch('/api/scan_status');
+    const st = await r.json();
+
+    if(st.total > 0){
+      const pct = Math.min(100, Math.round(st.progress / st.total * 100));
+      elDirFill.style.width = pct + '%';
+      elDirInfo.textContent = '扫描中: ' + st.progress + ' / ' + st.total + ' 首 (' + pct + '%)';
+    }
+
+    if(!st.done){
+      setTimeout(pollScanStatus, 500);
+      return;
+    }
+
+    elDirProgress.classList.remove('show');
+    elDirConfirm.disabled = false;
+    elDirConfirm.textContent = '完成';
+
+    if(st.error){
+      elDirError.textContent = st.error; elDirError.classList.add('show');
+      elDirConfirm.textContent = '重试';
+      return;
+    }
+
+    elDirModal.classList.remove('show');
+    toast('扫描完成: ' + st.stats.total + ' 首 (新 ' + st.stats.new + ', 缓存 ' + st.stats.cached + ')');
+    await reloadLibrary();
+  }catch(e){
+    setTimeout(pollScanStatus, 1000);
+  }
+}
+
+async function reloadLibrary(){
+  try{
+    const resp = await fetch('/api/library');
+    if(!resp.ok) throw new Error(resp.status);
+    library = await resp.json();
+    selectedPaths = new Set();
+    library.forEach(s => { if(s.selected) selectedPaths.add(s.relative_path); });
+    elSongCount.textContent = library.length + ' 首';
+    curIdx = -1;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    elNowTitle.textContent = '点击左侧歌曲开始试听';
+    elNowArtist.textContent = '';
+    elNowAlbum.textContent = '';
+    elNowArt.classList.remove('playing-art');
+    filterAndRender();
+    renderSelected();
+  }catch(e){
+    elSongList.innerHTML = '<div class="empty-msg">加载失败，请确认已运行 analyze_music.py 且服务已启动。</div>';
+  }
+}
+
+/* ═══════════════════════ Utilities ═══════════════════════ */
+function fmtTime(sec){
+  if(!sec || isNaN(sec)) return '0:00';
+  const m = Math.floor(sec/60);
+  const s = Math.floor(sec%60);
+  return m + ':' + String(s).padStart(2,'0');
+}
+function esc(str){
+  if(!str) return '';
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=> t.remove(), 2000);
+}
+
+init();
+</script>
+</body>
+</html>

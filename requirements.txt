@@ -1,0 +1,8 @@
+# 核心依赖（必需）
+mutagen>=1.47
+
+# 可选：真实副歌检测（强烈推荐，多进程并行，不装则自动用 35% 兜底）
+# 国内镜像: python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pychorus>=0.1
+librosa>=0.10
+numpy>=1.24
